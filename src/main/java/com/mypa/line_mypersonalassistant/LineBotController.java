@@ -387,17 +387,17 @@ public class LineBotController {
 
             if (userText.equalsIgnoreCase("functions")) {
                 lineReplyService.replyText(replyToken,
-                        "可用指令：\n" +
-                        "+ 待辦事項\n" +
-                        "List\n" +
-                        "Done 事項編號\n" +
-                        "$金額 備註\n" +
-                        "sum\n" +
-                        "$list\n" +
-                        "today\n" +
-                        "month\n" +
-                        "Remind 日期 時間 事項\n" +
-                        "Remind list"
+                    "📌 可用指令：\n" +
+                    "• + 待辦事項\n" +
+                    "• list\n" +
+                    "• done 事項編號\n" +
+                    "• $金額 備註\n" +
+                    "• sum\n" +
+                    "• $list\n" +
+                    "• today\n" +
+                    "• month\n" +
+                    "• remind 日期 時間 事項\n" +
+                    "• remind list"
                 );
                 continue;
             }
