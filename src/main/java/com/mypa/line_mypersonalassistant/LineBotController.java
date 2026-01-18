@@ -159,7 +159,7 @@ public class LineBotController {
             }
             
             // 今日清單 + 今日總計
-            if (userText.equalsIgnoreCase("$today")) {
+            if (userText.equalsIgnoreCase("today")) {
             
                 var list = expenseService.listToday(userId);
                 int total = expenseService.sumToday(userId);
@@ -184,7 +184,7 @@ public class LineBotController {
             }
 
             // 本月清單 + 本月總計
-            if (userText.equalsIgnoreCase("$month")) {
+            if (userText.equalsIgnoreCase("month")) {
                 var list = expenseService.listThisMonth(userId);
                 int total = expenseService.sumThisMonth(userId);
             
