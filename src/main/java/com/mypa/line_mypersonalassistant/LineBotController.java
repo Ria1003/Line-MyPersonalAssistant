@@ -385,6 +385,20 @@ public class LineBotController {
                 return "OK";
             }
 
+            if (userText.equalsIgnoreCase("functions")) {
+                lineReplyService.replyText(replyToken, "可用指令：\\n" + //
+                        "+ 待辦事項\\n" + //
+                        "List\\n" + //
+                        "Done 事項編號\\n" + //
+                        "$金額 備註\\n" + //
+                        "sum\\n" + //
+                        "$list\\n" + //
+                        "today\\n" + //
+                        "month\\n" + //
+                        "Remind 日期 時間 事項\\n" + //
+                        "Remind list");
+            }
+
             // 錯誤訊息
             lineReplyService.replyText(replyToken, "我看不懂這個指令 🤔\n\n可用指令：\n+ 待辦事項\nList\nDone 事項編號\n$金額 備註\nsum\n$list\ntoday\nmonth\nRemind 日期 時間 事項\nRemind list");
 
