@@ -397,14 +397,15 @@ public class LineBotController {
                     "• today\n" +
                     "• month\n" +
                     "• remind 日期 時間 事項\n" +
-                    "• remind list"
+                    "• remind list\n" +
+                    "• functions"
                 );
                 continue;
             }
             
 
             // 錯誤訊息
-            lineReplyService.replyText(replyToken, "我看不懂這個指令 🤔\n\n可用指令：\n+ 待辦事項\nList\nDone 事項編號\n$金額 備註\nsum\n$list\ntoday\nmonth\nRemind 日期 時間 事項\nRemind list");
+            lineReplyService.replyText(replyToken, "我看不懂這個指令 🤔\n\n可用指令：\n+ 待辦事項\nList\nDone 事項編號\n$金額 備註\nsum\n$list\ntoday\nmonth\nRemind 日期 時間 事項\nRemind list\nfuncrions");
 
         }
 
