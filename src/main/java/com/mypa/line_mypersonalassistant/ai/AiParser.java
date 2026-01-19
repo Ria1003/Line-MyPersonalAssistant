@@ -172,7 +172,7 @@ public class AiParser {
         ObjectNode slotProps = mapper.createObjectNode();
         slotProps.set("text", mapper.createObjectNode().put("type", "string"));
         slotProps.set("index", mapper.createObjectNode().put("type", "integer"));
-        slotProps.set("amount", mapper.createObjectNode().put("type", "integer"));
+        slotProps.set("amount", mapper.createObjectNode().put("type", "number"));
         slotProps.set("item", mapper.createObjectNode().put("type", "string"));
         slotProps.set("date", mapper.createObjectNode().put("type", "string").put("description", "yyyy-MM-dd"));
         slotProps.set("time", mapper.createObjectNode().put("type", "string").put("description", "HH:mm"));
@@ -201,6 +201,7 @@ public class AiParser {
         // to "text.format" (Responses API). See OpenAI docs.
         ObjectNode format = mapper.createObjectNode();
         format.put("type", "json_schema");
+        format.put("name", "line_bot_command");
         format.set("json_schema", schema);
 
         ObjectNode text = mapper.createObjectNode();
