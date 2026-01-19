@@ -21,7 +21,7 @@ import java.time.Duration;
  *
  * Environment variables supported:
  * - OPENAI_API_KEY (required)
- * - OPENAI_MODEL (optional, default gpt-4.1-mini)
+ * - OPENAI_MODEL (optional, default gpt-4o-mini)
  */
 @Service
 public class AiParser {
@@ -36,6 +36,9 @@ public class AiParser {
     private final String model;
     private final boolean enabled;
 
+    // Useful for debugging in production
+    private volatile String lastError = "";
+
     public AiParser(
             @Value("${openai.api-key:}") String apiKeyFromProps,
             @Value("${openai.model:}") String modelFromProps,
@@ -46,10 +49,25 @@ public class AiParser {
 
         String envModel = System.getenv("OPENAI_MODEL");
         String chosen = (modelFromProps != null && !modelFromProps.isBlank()) ? modelFromProps : envModel;
-        this.model = (chosen == null || chosen.isBlank()) ? "gpt-4.1-mini" : chosen;
+        this.model = (chosen == null || chosen.isBlank()) ? "gpt-4o-mini" : chosen;
 
         // If no key, automatically disable to avoid runtime failures.
         this.enabled = enabled && this.apiKey != null && !this.apiKey.isBlank();
+        if (!this.enabled) {
+            this.lastError = "OPENAI_API_KEY missing (AI parser disabled)";
+        }
+    }
+
+    public boolean isEnabled() {
+        return enabled;
+    }
+
+    public String getModel() {
+        return model;
+    }
+
+    public String getLastError() {
+        return lastError;
     }
 
     /**
@@ -59,11 +77,12 @@ public class AiParser {
         if (!enabled) return Command.unknown();
         if (userText == null) return Command.unknown();
 
-        // A tiny bit of pre-normalization helps the model.
         String normalized = userText.trim();
         if (normalized.isEmpty()) return Command.unknown();
 
         try {
+            lastError = "";
+
             ObjectNode payload = buildPayload(normalized);
             HttpRequest req = HttpRequest.newBuilder(RESPONSES_ENDPOINT)
                     .timeout(Duration.ofSeconds(25))
@@ -74,15 +93,25 @@ public class AiParser {
 
             HttpResponse<String> resp = http.send(req, HttpResponse.BodyHandlers.ofString());
             if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
+                // keep body snippet for debugging but avoid too long
+                String body = resp.body();
+                if (body != null && body.length() > 500) body = body.substring(0, 500) + "...";
+                lastError = "OpenAI HTTP " + resp.statusCode() + (body == null ? "" : (" body=" + body));
                 System.err.println("OpenAI error: HTTP " + resp.statusCode() + " body=" + resp.body());
                 return Command.unknown();
             }
 
             String json = extractJsonFromResponsesApi(resp.body());
-            if (json == null) return Command.unknown();
+            if (json == null) {
+                lastError = "OpenAI response did not contain JSON";
+                return Command.unknown();
+            }
 
             Command cmd = mapper.readValue(json, Command.class);
-            if (cmd == null) return Command.unknown();
+            if (cmd == null) {
+                lastError = "Failed to parse JSON into Command";
+                return Command.unknown();
+            }
 
             // Normalize / guardrails
             if (cmd.intent == null) cmd.intent = Intent.UNKNOWN;
@@ -95,28 +124,21 @@ public class AiParser {
                 cmd.slots.remove("note");
             }
 
-<<<<<<< HEAD
-            // Auto-fill missing for certain intents (helps your follow-up flow).
-=======
-            // Normalize / guardrails
-            if (cmd.intent == null) cmd.intent = Intent.UNKNOWN;
-            if (cmd.slots == null) cmd.slots = new java.util.HashMap<>();
-            if (cmd.missing == null) cmd.missing = new java.util.ArrayList<>();
-
+            // Recompute missing based on intent requirements
             cmd.missing.clear();
-
->>>>>>> 96b0e50 (Fix AI missing-field flow and date normalization)
             switch (cmd.intent) {
                 case ADD_TODO -> cmd.require("text");
                 case DONE_TODO, EXPENSE_DELETE, REMIND_DELETE -> cmd.require("index");
                 case ADD_EXPENSE -> cmd.require("amount", "item");
                 case REMIND_CREATE -> cmd.require("date", "time", "text");
-                default -> {}
+                default -> {
+                }
             }
 
             return cmd;
         } catch (Exception e) {
-            System.err.println("AiParser.parse error: " + e.getMessage());
+            lastError = "AiParser.parse error: " + e.getMessage();
+            System.err.println(lastError);
             return Command.unknown();
         }
     }
@@ -125,8 +147,9 @@ public class AiParser {
         ObjectNode root = mapper.createObjectNode();
         root.put("model", model);
 
-        // Provide strong steering: AI is a parser, not a chat bot.
-        String system = "You are an intent parser for a LINE chatbot. " +
+        // Strong steering: AI is a parser, not a chat bot.
+        String system =
+                "You are an intent parser for a LINE chatbot. " +
                 "Convert the user message into ONE JSON object that matches the given JSON schema. " +
                 "Do NOT include any extra keys. Do NOT include markdown. Do NOT explain. " +
                 "Expense description field must be named item (never note). " +
@@ -134,9 +157,11 @@ public class AiParser {
                 "1) For spending (e.g., 花了, 買了, 付了, 支出, 繳費), set intent=ADD_EXPENSE with a NEGATIVE amount. " +
                 "2) For income (e.g., 收到, 薪水, 入帳, 退款, 收入), set intent=ADD_EXPENSE with a POSITIVE amount. " +
                 "3) If the message is only a date like 1/18 or 2026-01-18, set intent=UNKNOWN. " +
-                "4) If the user says 剛剛/今天, do NOT ask for date.";
+                "4) If the user says 剛剛/今天, do NOT ask for date. " +
+                "5) Example: 我剛剛買菜花了50 => intent=ADD_EXPENSE, amount=-50, item=買菜. " +
+                "6) Example: 提醒我 1/19 15:20喝水 => intent=REMIND_CREATE, date=yyyy-MM-dd, time=15:20, text=喝水. " +
+                "7) For reminder, if year is not mentioned, choose the nearest future date from today.";
 
-        // Responses API uses input as either a string or array of messages.
         ObjectNode msg1 = mapper.createObjectNode();
         msg1.put("role", "system");
         msg1.put("content", system);
@@ -151,16 +176,12 @@ public class AiParser {
         root.put("temperature", 0.2);
 
         // JSON Schema for structured output.
-        ObjectNode schema = mapper.createObjectNode();
-        schema.put("name", "line_bot_command");
-        schema.put("strict", true);
-
         ObjectNode jsonSchema = mapper.createObjectNode();
         jsonSchema.put("type", "object");
         jsonSchema.put("additionalProperties", false);
 
-        // intent
         ObjectNode props = mapper.createObjectNode();
+
         ObjectNode intent = mapper.createObjectNode();
         intent.put("type", "string");
         intent.set("enum", mapper.createArrayNode()
@@ -180,7 +201,6 @@ public class AiParser {
                 .add(Intent.UNKNOWN.name()));
         props.set("intent", intent);
 
-        // slots
         ObjectNode slots = mapper.createObjectNode();
         slots.put("type", "object");
         slots.put("additionalProperties", false);
@@ -194,13 +214,11 @@ public class AiParser {
         slots.set("properties", slotProps);
         props.set("slots", slots);
 
-        // missing
         ObjectNode missing = mapper.createObjectNode();
         missing.put("type", "array");
         missing.set("items", mapper.createObjectNode().put("type", "string"));
         props.set("missing", missing);
 
-        // confidence
         ObjectNode confidence = mapper.createObjectNode();
         confidence.put("type", "number");
         confidence.put("minimum", 0);
@@ -210,17 +228,13 @@ public class AiParser {
         jsonSchema.set("properties", props);
         jsonSchema.set("required", mapper.createArrayNode().add("intent").add("slots").add("missing"));
 
-        schema.set("schema", jsonSchema);
-
-        // ---- Responses API Structured Outputs (json schema) ----
         ObjectNode format = mapper.createObjectNode();
         format.put("type", "json_schema");
+        format.put("name", "line_bot_command");
+        format.put("strict", true);
+        format.set("schema", jsonSchema);
 
-        // Required by API:
-        format.put("name", "line_bot_command");     // ✅ required
-        format.put("strict", true);                 // ✅ recommended
-        format.set("schema", jsonSchema);           // ✅ required (THIS fixes text.format.schema)
-
+        // Responses API expects `text.format`
         ObjectNode text = mapper.createObjectNode();
         text.set("format", format);
         root.set("text", text);
@@ -236,24 +250,19 @@ public class AiParser {
     private String extractJsonFromResponsesApi(String rawBody) throws IOException {
         JsonNode root = mapper.readTree(rawBody);
 
-        // Preferred path (Responses API): iterate output[*].content[*].text
-        // The first output item may be a "reasoning" block, so we scan all.
         JsonNode output = root.path("output");
         if (output.isArray()) {
             for (JsonNode outItem : output) {
                 JsonNode content = outItem.path("content");
                 if (!content.isArray()) continue;
                 for (JsonNode c : content) {
-                    // Most common: {"type":"output_text","text":"..."}
                     String text = c.path("text").asText(null);
                     if (text != null && !text.isBlank()) return stripToJsonObject(text);
                 }
             }
         }
 
-        // Fallback: search any string fields that look like JSON.
-        String asString = rawBody;
-        return stripToJsonObject(asString);
+        return stripToJsonObject(rawBody);
     }
 
     private String stripToJsonObject(String s) {

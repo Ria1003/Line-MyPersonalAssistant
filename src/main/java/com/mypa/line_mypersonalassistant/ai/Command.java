@@ -39,7 +39,13 @@ public class Command {
 
     public Command require(String... keys) {
         for (String k : keys) {
-            if (!this.slots.containsKey(k) || this.slots.get(k) == null || String.valueOf(this.slots.get(k)).isBlank()) {
+            Object v = this.slots.get(k);
+            if (v == null) {
+                if (!this.missing.contains(k)) this.missing.add(k);
+                continue;
+            }
+            String sv = String.valueOf(v);
+            if (sv.isBlank()) {
                 if (!this.missing.contains(k)) this.missing.add(k);
             }
         }

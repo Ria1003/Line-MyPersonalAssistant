@@ -13,9 +13,14 @@ import java.util.Map;
 
 @Component
 public class TodoStorage {
-
     private final ObjectMapper mapper = new ObjectMapper();
-    private final Path filePath = Path.of("data", "todos.json");
+
+    private final Path filePath;
+
+    public TodoStorage() {
+        String dir = System.getenv().getOrDefault("DATA_DIR", "data");
+        this.filePath = Path.of(dir, "todos.json");
+    }
 
     public Map<String, List<String>> load() {
         try {

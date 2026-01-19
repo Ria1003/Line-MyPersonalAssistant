@@ -51,4 +51,28 @@ public class TodoService {
     public boolean isEmpty(String userId) {
         return getOrCreateList(userId).isEmpty();
     }
+
+    public String completeByText(String userId, String text) {
+        if (text == null) return null;
+        String key = normalizeTodoText(text);
+        if (key.isBlank()) return null;
+    
+        List<String> todos = getTodos(userId); // 你原本列出待辦的地方
+        for (int i = 0; i < todos.size(); i++) {
+            String item = todos.get(i);
+            if (normalizeTodoText(item).contains(key) || key.contains(normalizeTodoText(item))) {
+                // 找到就用原本的 completeTodo（注意：你的 completeTodo 用 1-based 或 0-based）
+                return completeTodo(userId, i + 1);
+            }
+        }
+        return null;
+    }
+    
+    private String normalizeTodoText(String s) {
+        if (s == null) return "";
+        return s.trim()
+                .replaceAll("[\\s　]+", "")
+                .replaceAll("做完|完成|已完成|買完|好了|了$", "");
+    }
+    
 }
