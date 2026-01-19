@@ -197,12 +197,14 @@ public class AiParser {
 
         schema.set("schema", jsonSchema);
 
-        // NOTE (Responses API): Structured outputs moved from "response_format" (Chat Completions)
-        // to "text.format" (Responses API). See OpenAI docs.
+        // ---- Responses API Structured Outputs (json schema) ----
         ObjectNode format = mapper.createObjectNode();
         format.put("type", "json_schema");
-        format.put("name", "line_bot_command");
-        format.set("json_schema", schema);
+
+        // Required by API:
+        format.put("name", "line_bot_command");     // ✅ required
+        format.put("strict", true);                 // ✅ recommended
+        format.set("schema", jsonSchema);           // ✅ required (THIS fixes text.format.schema)
 
         ObjectNode text = mapper.createObjectNode();
         text.set("format", format);
