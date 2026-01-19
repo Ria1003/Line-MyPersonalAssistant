@@ -3,7 +3,14 @@ package com.mypa.line_mypersonalassistant;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
+<<<<<<< HEAD
 
+=======
+import com.mypa.line_mypersonalassistant.ai.AiParser;
+import com.mypa.line_mypersonalassistant.ai.PendingCommandService;
+import com.mypa.line_mypersonalassistant.ai.Command;
+import com.mypa.line_mypersonalassistant.ai.Intent;
+>>>>>>> 96b0e50 (Fix AI missing-field flow and date normalization)
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -20,17 +27,200 @@ public class LineBotController {
     private final PendingReminderService pendingReminderService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final LineReplyService lineReplyService;
+<<<<<<< HEAD
+=======
+    private final AiParser aiParser;
+    private final PendingCommandService pendingCommandService;
+>>>>>>> 96b0e50 (Fix AI missing-field flow and date normalization)
 
     public LineBotController(LineReplyService lineReplyService, 
                              TodoService todoService, 
                              ExpenseService expenseService, 
                              ReminderService reminderService, 
+<<<<<<< HEAD
                              PendingReminderService pendingReminderService) {
+=======
+                             PendingReminderService pendingReminderService,
+                             AiParser aiParser,
+                             PendingCommandService pendingCommandService) {
+>>>>>>> 96b0e50 (Fix AI missing-field flow and date normalization)
         this.lineReplyService = lineReplyService;
         this.todoService = todoService;
         this.expenseService = expenseService;
         this.reminderService = reminderService;
         this.pendingReminderService = pendingReminderService;
+<<<<<<< HEAD
+=======
+        this.aiParser = aiParser;
+        this.pendingCommandService = pendingCommandService;
+    }
+
+    private void executeAiCommand(Command cmd, String userId, String replyToken) {
+        switch (cmd.intent) {
+            case ADD_TODO -> {
+                String text = cmd.slotString("text");
+                todoService.addTodo(userId, text);
+                lineReplyService.replyText(replyToken, "✅ 已加入待辦：" + text);
+            }
+            case LIST_TODO -> {
+                String list = todoService.listTodos(userId);
+                lineReplyService.replyText(replyToken, list);
+            }
+            case DONE_TODO -> {
+                Integer idx = cmd.slotInt("index");
+                boolean ok = todoService.markDone(userId, idx);
+                lineReplyService.replyText(replyToken, ok ? "✅ 已完成第 " + idx + " 項" : "⚠️ 找不到第 " + idx + " 項");
+            }
+            case ADD_EXPENSE -> {
+                Double amount = cmd.slotDouble("amount");
+                String item = cmd.slotString("item");
+                if (amount == null || item == null || item.isBlank()) {
+                    pendingCommandService.put(userId, cmd);
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", cmd.missing));
+                    return;
+                }
+                expenseService.addExpense(userId, amount, item);
+                lineReplyService.replyText(replyToken, "✅ 已記錄：" + item + " " + formatAmount(amount));
+            }
+            case EXPENSE_LIST -> {
+                lineReplyService.replyText(replyToken, expenseService.listText(userId));
+            }
+            case EXPENSE_SUM -> {
+                lineReplyService.replyText(replyToken, "📌 總計：" + formatAmount(expenseService.sum(userId)));
+            }
+            case EXPENSE_DELETE -> {
+                Integer idx = cmd.slotInt("index");
+                boolean ok = expenseService.delete(userId, idx);
+                lineReplyService.replyText(replyToken, ok ? "🗑️ 已刪除第 " + idx + " 筆" : "⚠️ 找不到第 " + idx + " 筆");
+            }
+            case TODAY -> {
+                lineReplyService.replyText(replyToken, "📅 今日紀錄：\n" + expenseService.listTodayText(userId)
+                        + "\n\n📌 今日總計：" + formatAmount(expenseService.sumToday(userId)));
+            }
+            case MONTH -> {
+                lineReplyService.replyText(replyToken, "🗓️ 本月紀錄：\n" + expenseService.listMonthText(userId)
+                        + "\n\n📌 本月總計：" + formatAmount(expenseService.sumThisMonth(userId)));
+            }
+            case REMIND_CREATE -> {
+                String date = cmd.slotString("date");
+                String time = cmd.slotString("time");
+                String text = cmd.slotString("text");
+                if (date == null || time == null || text == null) {
+                    pendingCommandService.put(userId, cmd);
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", cmd.missing));
+                    return;
+                }
+                String result = pendingReminderService.createReminderFromParts(userId, date, time, text);
+                lineReplyService.replyText(replyToken, result);
+            }
+            case REMIND_LIST -> lineReplyService.replyText(replyToken, pendingReminderService.listReminders(userId));
+            case REMIND_DELETE -> {
+                Integer idx = cmd.slotInt("index");
+                boolean ok = pendingReminderService.deleteReminder(userId, idx);
+                lineReplyService.replyText(replyToken, ok ? "🗑️ 已刪除提醒 " + idx : "⚠️ 找不到提醒 " + idx);
+            }
+            case HELP -> lineReplyService.replyText(replyToken, helpText());
+            default -> lineReplyService.replyText(replyToken, "我看不太懂，你可以輸入 functions 看可用指令🙂");
+        }
+    }
+
+    private Command fillPendingSlots(Command base, String userText) {
+        // copy command so we don't mutate shared instances unexpectedly
+        Command cmd = base.copy();
+        if (cmd.slots == null) cmd.slots = new java.util.HashMap<>();
+        String t = userText == null ? "" : userText.trim();
+        if (t.isEmpty()) return cmd;
+
+        // If the user answered with a date shortcut like 1/18, normalize it
+        String normalizedDate = normalizeDateShortcut(t);
+
+        for (String need : new java.util.ArrayList<>(cmd.missing)) {
+            switch (need) {
+                case "date" -> {
+                    if (looksLikeDate(normalizedDate)) cmd.slots.put("date", normalizedDate);
+                }
+                case "time" -> {
+                    String time = normalizeTime(t);
+                    if (time != null) cmd.slots.put("time", time);
+                }
+                case "index" -> {
+                    Integer idx = parseIntSafe(t);
+                    if (idx != null) cmd.slots.put("index", idx);
+                }
+                case "amount" -> {
+                    Double a = parseAmountSafe(t);
+                    if (a != null) cmd.slots.put("amount", a);
+                }
+                case "item" -> cmd.slots.put("item", t);
+                case "text" -> cmd.slots.put("text", t);
+                default -> {}
+            }
+        }
+        return cmd;
+    }
+
+    private String normalizeDateShortcut(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("^(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?$")
+                .matcher(text.trim());
+        if (!m.matches()) return text;
+
+        int month = Integer.parseInt(m.group(1));
+        int day = Integer.parseInt(m.group(2));
+        String y = m.group(3);
+
+        int year;
+        if (y == null) {
+            year = java.time.LocalDate.now().getYear();
+        } else {
+            int yy = Integer.parseInt(y);
+            year = (y.length() == 2) ? (2000 + yy) : yy;
+        }
+
+        return String.format("%04d-%02d-%02d", year, month, day);
+    }
+
+    private boolean looksLikeDate(String s) {
+        return s != null && s.matches("^\\d{4}-\\d{2}-\\d{2}$");
+    }
+
+    private String normalizeTime(String t) {
+        String s = t.trim();
+        // accept HH:mm or H:mm
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^(\\d{1,2}):(\\d{2})$").matcher(s);
+        if (!m.matches()) return null;
+        int h = Integer.parseInt(m.group(1));
+        int min = Integer.parseInt(m.group(2));
+        if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+        return String.format("%02d:%02d", h, min);
+    }
+
+    private Integer parseIntSafe(String s) {
+        try {
+            return Integer.parseInt(s.trim());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Double parseAmountSafe(String s) {
+        String cleaned = s.trim().replaceAll("[,$\\s]", "");
+        // allow leading + or -
+        java.util.regex.Matcher m = java.util.regex.Pattern.compile("^[+-]?\\d+(?:\\.\\d+)?$").matcher(cleaned);
+        if (!m.matches()) return null;
+        try {
+            return Double.parseDouble(cleaned);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String formatAmount(double a) {
+        // Show +/- sign and trim trailing .0
+        java.text.DecimalFormat df = new java.text.DecimalFormat("0.##");
+        String num = df.format(Math.abs(a));
+        return (a >= 0 ? "+" : "-") + num;
+>>>>>>> 96b0e50 (Fix AI missing-field flow and date normalization)
     }
 
     @PostMapping("/callback")
@@ -67,6 +257,31 @@ public class LineBotController {
 
         
             String userText = messageNode.path("text").asText().trim();
+
+            // 0) If we are in the middle of an AI follow-up, try to fill missing slots first
+            Command pendingCmd = pendingCommandService.get(userId);
+            if (pendingCmd != null) {
+                Command filled = fillPendingSlots(pendingCmd, userText);
+                // recompute missing based on intent requirements
+                filled.missing.clear();
+                switch (filled.intent) {
+                    case ADD_TODO -> filled.require("text");
+                    case DONE_TODO, EXPENSE_DELETE, REMIND_DELETE -> filled.require("index");
+                    case ADD_EXPENSE -> filled.require("amount", "item");
+                    case REMIND_CREATE -> filled.require("date", "time", "text");
+                    default -> {}
+                }
+
+                if (!filled.missing.isEmpty()) {
+                    pendingCommandService.put(userId, filled);
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", filled.missing));
+                    continue;
+                } else {
+                    pendingCommandService.clear(userId);
+                    executeAiCommand(filled, userId, replyToken);
+                    continue;
+                }
+            }
             System.out.println("使用者說: " + userText);
 
             if (userText.equalsIgnoreCase("$list")) {
@@ -83,7 +298,7 @@ public class LineBotController {
                 for (int i = 0; i < list.size(); i++) {
                     var r = list.get(i);
                     sb.append(i + 1).append(". ")
-                      .append(r.amount >= 0 ? "+" : "").append(r.amount)
+                      .append(formatAmount(r.amount))
                       .append(" ").append(r.item)
                       .append("\n");
                     shown++;
@@ -115,43 +330,55 @@ public class LineBotController {
             }
             
 
-            // 記帳：$-50 午餐 or $+90000 薪水
+            // 記帳：$-50 午餐 or $+90000 薪水 or $28.5 買菜
             if(userText.startsWith("$")) {
 
-                if (!userText.matches("^\\$[+-]\\d+\\s+.+$")) {
-                    lineReplyService.replyText(
-                            replyToken,
-                            "❌ 記帳格式錯誤\n請使用：\n$-50 午餐\n$+90000 薪水"
-                    );
+                String content = userText.substring(1).trim(); // "-50 午餐" / "+90000 薪水" / "28.5 買菜"
+                String[] parts = content.split("\\s+", 2);
+                if (parts.length < 2) {
+                    lineReplyService.replyText(replyToken,
+                            "❌ 記帳格式錯誤\n請使用：\n$-50 午餐\n$+90000 薪水\n$28.5 買菜（未加符號預設為支出）");
                     return "OK";
                 }
 
-                String content = userText.substring(1); // "-50 午餐"
-                String[] parts = content.split("\\s+", 2);
-
-                int amount = Integer.parseInt(parts[0]);
+                String amountStr = parts[0].trim().replace(",", "");
                 String item = parts[1].trim();
+
+                Double parsed = parseAmountLoose(amountStr);
+                if (parsed == null) {
+                    lineReplyService.replyText(replyToken,
+                            "❌ 金額格式錯誤\n例如：$-50 午餐、$+90000 薪水、$28.5 買菜");
+                    return "OK";
+                }
+
+                // If user didn't specify sign, default to expense (negative)
+                double amount = parsed;
+                if (!(amountStr.startsWith("+") || amountStr.startsWith("-"))) {
+                    amount = -Math.abs(amount);
+                }
+
                 expenseService.addExpense(userId, amount, item);
                 String type = amount >= 0 ? "進帳" : "支出";
 
-                lineReplyService.replyText(replyToken, "✅ 已記錄" + type + "\n" + (amount >= 0 ? "+" : "") + amount + " 元\n" + "備註：" + item);
+                lineReplyService.replyText(replyToken,
+                        "✅ 已記錄" + type + "\n" + formatAmount(amount) + " 元\n" + "備註：" + item);
         
                 return "OK";
             }
 
             // 結算：Sum
             if(userText.equalsIgnoreCase("Sum")) {
-                int total = expenseService.sum(userId);
+                double total = expenseService.sum(userId);
                 var list = expenseService.list(userId);
 
                 StringBuilder sb = new StringBuilder();
-                sb.append("📊 目前累計：").append(total).append("元\n");
+                sb.append("📊 目前累計：").append(formatAmount(total)).append("元\n");
 
                 sb.append("🕒 最近 5 筆：\n");
                 int start = Math.max(0, list.size() - 5);
                 for(int i = start; i< list.size() ; i++) {
                     ExpenseService.Record r = list.get(i);
-                    sb.append("- ").append(r.amount).append(" ").append(r.item).append("\n");
+                    sb.append("- ").append(formatAmount(r.amount)).append(" ").append(r.item).append("\n");
                 }
 
                 lineReplyService.replyText(replyToken, sb.toString());
@@ -162,7 +389,7 @@ public class LineBotController {
             if (userText.equalsIgnoreCase("today")) {
             
                 var list = expenseService.listToday(userId);
-                int total = expenseService.sumToday(userId);
+                double total = expenseService.sumToday(userId);
             
                 if (list.isEmpty()) {
                     lineReplyService.replyText(replyToken, "📅 今天沒有任何紀錄\n今日總計：0");
@@ -173,11 +400,11 @@ public class LineBotController {
                 int i = 1;
                 for (var r : list) {
                     sb.append(i++).append(". ")
-                      .append(r.amount >= 0 ? "+" : "").append(r.amount)
+                      .append(formatAmount(r.amount))
                       .append(" ").append(r.item).append("\n");
                     if (i > 10) break; // 先顯示前 10 筆
                 }
-                sb.append("\n今日總計：").append(total);
+                sb.append("\n今日總計：").append(formatAmount(total));
             
                 lineReplyService.replyText(replyToken, sb.toString());
                 return "OK";
@@ -186,7 +413,7 @@ public class LineBotController {
             // 本月清單 + 本月總計
             if (userText.equalsIgnoreCase("month")) {
                 var list = expenseService.listThisMonth(userId);
-                int total = expenseService.sumThisMonth(userId);
+                double total = expenseService.sumThisMonth(userId);
             
                 if (list.isEmpty()) {
                     lineReplyService.replyText(replyToken, "📅 本月沒有任何紀錄\n本月總計：0");
@@ -403,13 +630,220 @@ public class LineBotController {
                 continue;
             }
             
+<<<<<<< HEAD
 
             // 錯誤訊息
             lineReplyService.replyText(replyToken, "我看不懂這個指令 🤔\n\n可用指令：\n+ 待辦事項\nList\nDone 事項編號\n$金額 備註\nsum\n$list\ntoday\nmonth\nRemind 日期 時間 事項\nRemind list\nfunctions");
+=======
+            // --- AI parser (Structured Output) ---
+            Command cmd = aiParser.parse(userText);
+            if (cmd.intent != Intent.UNKNOWN) {
+                if (cmd.missing != null && !cmd.missing.isEmpty()) {
+                    pendingCommandService.put(userId, cmd);
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", cmd.missing));
+                    return "OK";
+                }
+                executeAiCommand(cmd, userId, replyToken);
+                return "OK";
+            }
+
+            // fallback
+            lineReplyService.replyText(replyToken,
+                    "我看不懂這個指令 🤔\n\n可用指令：\n" +
+                    "+ 待辦事項\n" +
+                    "List\n" +
+                    "Done 事項編號\n" +
+                    "$金額 備註（預設支出，可用 +100 表示收入）\n" +
+                    "sum\n" +
+                    "$list\n" +
+                    "today\n" +
+                    "month\n" +
+                    "Remind 日期 時間 事項\n" +
+                    "Remind list\n" +
+                    "functions");
+>>>>>>> 96b0e50 (Fix AI missing-field flow and date normalization)
 
         }
 
         return "OK";
     }
 
+    // -------------------- AI helpers --------------------
+
+    private void executeAiCommand(Command cmd, String userId, String replyToken) {
+        switch (cmd.intent) {
+            case ADD_TODO -> {
+                String text = cmd.slotString("text");
+                if (text == null || text.isBlank()) {
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：text");
+                    return;
+                }
+                todoService.addTodo(userId, text);
+                lineReplyService.replyText(replyToken, "✅ 已新增待辦：" + text);
+            }
+            case LIST_TODO -> lineReplyService.replyText(replyToken, todoService.listTodos(userId));
+            case DONE_TODO -> {
+                Integer idx = cmd.slotInt("index");
+                if (idx == null) {
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：index");
+                    return;
+                }
+                boolean ok = todoService.doneTodo(userId, idx);
+                lineReplyService.replyText(replyToken, ok ? "✅ 已完成第 " + idx + " 項" : "❌ 找不到第 " + idx + " 項");
+            }
+            case ADD_EXPENSE -> {
+                Double amount = cmd.slotDouble("amount");
+                if (amount == null) {
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：amount");
+                    return;
+                }
+                String item = cmd.slotString("item");
+                if (item == null || item.isBlank()) {
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：item");
+                    return;
+                }
+                expenseService.addExpense(userId, amount, item);
+                lineReplyService.replyText(replyToken, "✅ 已記錄：" + formatAmount(amount) + " " + item);
+            }
+            case EXPENSE_LIST -> {
+                var list = expenseService.list(userId);
+                if (list.isEmpty()) {
+                    lineReplyService.replyText(replyToken, "目前沒有任何紀錄");
+                    return;
+                }
+                StringBuilder sb = new StringBuilder("💰 最近支出/收入（最新 10 筆）\n");
+                int shown = 0;
+                for (int i = list.size() - 1; i >= 0 && shown < 10; i--, shown++) {
+                    var r = list.get(i);
+                    sb.append("#").append(i + 1).append(" ")
+                            .append(formatAmount(r.amount)).append(" ")
+                            .append(r.item).append("\n");
+                }
+                lineReplyService.replyText(replyToken, sb.toString());
+            }
+            case EXPENSE_SUM -> lineReplyService.replyText(replyToken, "💰 總計：" + formatAmount(expenseService.sum(userId)));
+            case EXPENSE_DELETE -> {
+                Integer idx = cmd.slotInt("index");
+                if (idx == null) {
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：index");
+                    return;
+                }
+                boolean ok = expenseService.delete(userId, idx - 1);
+                lineReplyService.replyText(replyToken, ok ? "✅ 已刪除第 " + idx + " 筆" : "❌ 找不到第 " + idx + " 筆");
+            }
+            case TODAY -> lineReplyService.replyText(replyToken, "📅 今日合計：" + formatAmount(expenseService.sumToday(userId)));
+            case MONTH -> lineReplyService.replyText(replyToken, "📅 本月合計：" + formatAmount(expenseService.sumThisMonth(userId)));
+            case REMIND_CREATE -> {
+                String date = cmd.slotString("date");
+                String time = cmd.slotString("time");
+                String text = cmd.slotString("text");
+                String result = pendingReminderService.createReminderFromParts(userId, date, time, text);
+                lineReplyService.replyText(replyToken, result);
+            }
+            case REMIND_LIST -> lineReplyService.replyText(replyToken, pendingReminderService.listReminders(userId));
+            case REMIND_DELETE -> {
+                Integer idx = cmd.slotInt("index");
+                if (idx == null) {
+                    lineReplyService.replyText(replyToken, "我需要更多資訊：index");
+                    return;
+                }
+                boolean ok = pendingReminderService.deleteReminder(userId, idx);
+                lineReplyService.replyText(replyToken, ok ? "✅ 已刪除第 " + idx + " 個提醒" : "❌ 找不到第 " + idx + " 個提醒");
+            }
+            case HELP -> lineReplyService.replyText(replyToken, "可用指令：\n+ 待辦事項\nList\nDone 事項編號\n$金額 備註\nsum\n$list\ntoday\nmonth\nRemind 日期 時間 事項\nRemind list");
+            default -> lineReplyService.replyText(replyToken, "我看不懂 😅 可以輸入 functions 看指令");
+        }
+    }
+
+    private Command fillPendingSlots(Command pending, String userText) {
+        if (pending == null || userText == null) return pending;
+        String text = userText.trim();
+        if (text.isBlank()) return pending;
+
+        // fill only what we were missing (but allow the user to provide multiple at once)
+        if (pending.missing.contains("date")) {
+            String d = normalizeDateShortcut(text);
+            if (d.matches("^\\d{4}-\\d{2}-\\d{2}$")) pending.slots.put("date", d);
+        }
+        if (pending.missing.contains("time")) {
+            String t = normalizeTimeShortcut(text);
+            if (t.matches("^\\d{2}:\\d{2}$")) pending.slots.put("time", t);
+        }
+        if (pending.missing.contains("index")) {
+            Integer idx = parseInt(text);
+            if (idx != null) pending.slots.put("index", idx);
+        }
+        if (pending.missing.contains("amount")) {
+            Double amt = parseDouble(text);
+            if (amt != null) pending.slots.put("amount", amt);
+        }
+        if (pending.missing.contains("item")) {
+            pending.slots.put("item", text);
+        }
+        if (pending.missing.contains("text")) {
+            pending.slots.put("text", text);
+        }
+        return pending;
+    }
+
+    private String normalizeDateShortcut(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("^(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?$")
+                .matcher(text.trim());
+        if (!m.matches()) return text;
+
+        int month = Integer.parseInt(m.group(1));
+        int day = Integer.parseInt(m.group(2));
+        String y = m.group(3);
+        int year;
+        if (y == null) {
+            year = java.time.LocalDate.now().getYear();
+        } else {
+            int yy = Integer.parseInt(y);
+            year = (y.length() == 2) ? (2000 + yy) : yy;
+        }
+        return String.format("%04d-%02d-%02d", year, month, day);
+    }
+
+    private String normalizeTimeShortcut(String text) {
+        java.util.regex.Matcher m = java.util.regex.Pattern
+                .compile("^(\\d{1,2}):(\\d{2})$")
+                .matcher(text.trim());
+        if (!m.matches()) return text;
+        int h = Integer.parseInt(m.group(1));
+        int min = Integer.parseInt(m.group(2));
+        return String.format("%02d:%02d", h, min);
+    }
+
+    private Integer parseInt(String text) {
+        try {
+            String cleaned = text.trim().replaceAll("[^0-9-]", "");
+            if (cleaned.isBlank()) return null;
+            return Integer.parseInt(cleaned);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private Double parseDouble(String text) {
+        try {
+            String cleaned = text.trim()
+                    .replaceAll("[$,]", "")
+                    .replaceAll("[^0-9.+-]", "");
+            if (cleaned.isBlank()) return null;
+            return Double.parseDouble(cleaned);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private String formatAmount(double v) {
+        // avoid 28.0 style
+        if (Math.abs(v - Math.rint(v)) < 1e-9) {
+            return String.format("%.0f", v);
+        }
+        // trim trailing zeros
+        String s = String.format("%.2f", v);
+        return s.replaceAll("\\.?0+$", "");
+    }
 }

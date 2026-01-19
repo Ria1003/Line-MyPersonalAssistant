@@ -24,13 +24,17 @@ import java.time.*;
 public class ExpenseService {
     
     public static class Record {
-        public int amount;
+        /**
+         * amount: positive = income, negative = expense
+         * Use double so inputs like 28.5 won't get truncated.
+         */
+        public double amount;
         public String item;
         public long ts;
 
         public Record(){}
 
-        public Record(int amount, String item) {
+        public Record(double amount, String item) {
             this.amount = amount;
             this.item = item;
             this.ts = Instant.now().toEpochMilli(); // exact time right now
@@ -82,7 +86,7 @@ public class ExpenseService {
      * @param amount 金額
      * @param item   東西
      */
-    public void addExpense(String userId, int amount, String item) {
+    public void addExpense(String userId, double amount, String item) {
         getOrCreate(userId).add(new Record(amount, item));
         storage.save(recordsByUser);
     }
@@ -97,9 +101,9 @@ public class ExpenseService {
     /**
      * 計算某使用者的支出總和
      */
-    public int sum(String userId) {
-        int total = 0;
-        for(Record r : getOrCreate(userId)) {
+    public double sum(String userId) {
+        double total = 0.0;
+        for (Record r : getOrCreate(userId)) {
             total += r.amount;
         }
         return total;
@@ -116,8 +120,8 @@ public class ExpenseService {
     }
 
     /** 計算「今天」總計 */
-    public int sumToday(String userId) {
-        int total = 0;
+    public double sumToday(String userId) {
+        double total = 0.0;
         for (Record r : listToday(userId)) total += r.amount;
         return total;
     }
@@ -134,8 +138,8 @@ public class ExpenseService {
     }
 
     /** 計算「本月」總計 */
-    public int sumThisMonth(String userId) {
-        int total = 0;
+    public double sumThisMonth(String userId) {
+        double total = 0.0;
         for (Record r : listThisMonth(userId)) total += r.amount;
         return total;
     }

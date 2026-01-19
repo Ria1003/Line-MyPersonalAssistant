@@ -62,4 +62,16 @@ public class Command {
             return null;
         }
     }
+
+    public Double slotDouble(String key) {
+        Object v = slots.get(key);
+        if (v == null) return null;
+        if (v instanceof Double d) return d;
+        if (v instanceof Number n) return n.doubleValue();
+        try {
+            return Double.parseDouble(String.valueOf(v));
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
 }

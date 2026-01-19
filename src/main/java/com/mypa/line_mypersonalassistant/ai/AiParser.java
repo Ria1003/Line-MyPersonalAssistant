@@ -95,7 +95,17 @@ public class AiParser {
                 cmd.slots.remove("note");
             }
 
+<<<<<<< HEAD
             // Auto-fill missing for certain intents (helps your follow-up flow).
+=======
+            // Normalize / guardrails
+            if (cmd.intent == null) cmd.intent = Intent.UNKNOWN;
+            if (cmd.slots == null) cmd.slots = new java.util.HashMap<>();
+            if (cmd.missing == null) cmd.missing = new java.util.ArrayList<>();
+
+            cmd.missing.clear();
+
+>>>>>>> 96b0e50 (Fix AI missing-field flow and date normalization)
             switch (cmd.intent) {
                 case ADD_TODO -> cmd.require("text");
                 case DONE_TODO, EXPENSE_DELETE, REMIND_DELETE -> cmd.require("index");
@@ -119,7 +129,12 @@ public class AiParser {
         String system = "You are an intent parser for a LINE chatbot. " +
                 "Convert the user message into ONE JSON object that matches the given JSON schema. " +
                 "Do NOT include any extra keys. Do NOT include markdown. Do NOT explain. " +
-                "Expense description field must be named item (never note).";
+                "Expense description field must be named item (never note). " +
+                "Important rules: " +
+                "1) For spending (e.g., 花了, 買了, 付了, 支出, 繳費), set intent=ADD_EXPENSE with a NEGATIVE amount. " +
+                "2) For income (e.g., 收到, 薪水, 入帳, 退款, 收入), set intent=ADD_EXPENSE with a POSITIVE amount. " +
+                "3) If the message is only a date like 1/18 or 2026-01-18, set intent=UNKNOWN. " +
+                "4) If the user says 剛剛/今天, do NOT ask for date.";
 
         // Responses API uses input as either a string or array of messages.
         ObjectNode msg1 = mapper.createObjectNode();
