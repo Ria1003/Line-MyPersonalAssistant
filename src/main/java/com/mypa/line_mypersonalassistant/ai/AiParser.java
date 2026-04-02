@@ -147,9 +147,12 @@ public class AiParser {
         ObjectNode root = mapper.createObjectNode();
         root.put("model", model);
 
+        String today = java.time.LocalDate.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
         // Strong steering: AI is a parser, not a chat bot.
         String system =
                 "You are an intent parser for a LINE chatbot. " +
+                "Today's date is " + today + ". " +
                 "Convert the user message into ONE JSON object that matches the given JSON schema. " +
                 "Do NOT include any extra keys. Do NOT include markdown. Do NOT explain. " +
                 "Expense description field must be named item (never note). " +
@@ -159,8 +162,33 @@ public class AiParser {
                 "3) If the message is only a date like 1/18 or 2026-01-18, set intent=UNKNOWN. " +
                 "4) If the user says 剛剛/今天, do NOT ask for date. " +
                 "5) Example: 我剛剛買菜花了50 => intent=ADD_EXPENSE, amount=-50, item=買菜. " +
-                "6) Example: 提醒我 1/19 15:20喝水 => intent=REMIND_CREATE, date=yyyy-MM-dd, time=15:20, text=喝水. " +
-                "7) For reminder, if year is not mentioned, choose the nearest future date from today.";
+                "6) Reminder intent (REMIND_CREATE): triggered by 提醒我/提醒/remind me/remind/set a reminder/set reminder. " +
+                "   Always output date as yyyy-MM-dd and time as HH:mm in 24-hour format. " +
+                "   If year is not mentioned, choose the nearest future date from today (" + today + "). " +
+                "7) Chinese time expressions — convert to 24-hour HH:mm: " +
+                "   早上/上午 N 點 = 0N:00 (e.g. 早上8點=08:00, 上午10點=10:00). " +
+                "   中午 = 12:00. " +
+                "   下午/午後 N 點 = (N+12):00 (e.g. 下午3點=15:00, 下午1點=13:00). " +
+                "   晚上/傍晚 N 點 = (N+12):00 (e.g. 晚上7點=19:00, 晚上12點=00:00). " +
+                "   N 點半 = N:30 (e.g. 早上8點半=08:30, 下午3點半=15:30). " +
+                "   N 點 without prefix: if 1<=N<=6 assume PM (13:00–18:00), else AM. " +
+                "8) Reminder examples: " +
+                "   提醒我 1/19 15:20喝水 => REMIND_CREATE, date=nearest future 01-19, time=15:20, text=喝水. " +
+                "   提醒我 1/24早上8點要po子晴生日文 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=po子晴生日文. " +
+                "   remind me to call mom at 8AM on 1/24 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=call mom. " +
+                "   remind me to po子晴生日文 at 8:00AM on 1/24 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=po子晴生日文. " +
+                "9) Todo examples: " +
+                "   '幫我加 買牛奶 到待辦' / 'add call dentist to my list' / '記一下要開會' => ADD_TODO. " +
+                "   '我的待辦事項' / '看一下待辦' / 'what are my todos' / 'show my list' => LIST_TODO. " +
+                "   '我完成了買牛奶' / 'done with 買牛奶' / 'I finished task 1' / 'mark 1 done' => DONE_TODO. " +
+                "10) Expense summary examples: " +
+                "   '我今天花了多少' / 'what did I spend today' / '今天花費' => TODAY. " +
+                "   '這個月花了多少' / 'this month spending' / '本月消費' => MONTH. " +
+                "   '幫我看一下消費清單' / 'show my expenses' / '記帳清單' => EXPENSE_LIST. " +
+                "   '目前總共花了多少' / 'total spending' / '花費總計' => EXPENSE_SUM. " +
+                "   'I spent 50 dollars on lunch' / '午餐50塊' (no verb) => ADD_EXPENSE, amount=-50, item=lunch. " +
+                "11) For REMIND_LIST: '我有什麼提醒' / 'what reminders do I have' / 'list my reminders' => REMIND_LIST. " +
+                "    For REMIND_DELETE: 'delete reminder 2' / '刪掉第2個提醒' => REMIND_DELETE, index=2.";
 
         ObjectNode msg1 = mapper.createObjectNode();
         msg1.put("role", "system");

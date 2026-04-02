@@ -475,6 +475,22 @@ public class LineBotController {
                 return "OK";
             }
 
+            // === AI-first natural language parsing ===
+            // All non-$ messages are sent through AI when enabled.
+            // Falls through to the exact-command shortcuts below when AI is disabled or returns UNKNOWN.
+            if (aiParser.isEnabled()) {
+                Command aiCmd = aiParser.parse(userText);
+                if (aiCmd.intent != Intent.UNKNOWN) {
+                    if (aiCmd.missing != null && !aiCmd.missing.isEmpty()) {
+                        pendingCommandService.put(userId, aiCmd);
+                        lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", aiCmd.missing));
+                    } else {
+                        executeAiCommand(aiCmd, userId, replyToken);
+                    }
+                    continue;
+                }
+            }
+
             if (userText.equalsIgnoreCase("Sum")) {
                 double total = expenseService.sum(userId);
                 var list = expenseService.list(userId);
@@ -596,25 +612,18 @@ public class LineBotController {
             }
 
             if (pendingReminderService.has(userId)) {
-                if (!userText.matches("^[1-7]$")) {
-                    lineReplyService.replyText(replyToken, "請輸入編號 選擇提前多久提醒🙂");
-                    return "OK";
+                java.time.Duration advance = parseAdvanceNotice(userText);
+                if (advance == null) {
+                    lineReplyService.replyText(replyToken,
+                            "請問要提前多久提醒？\n" +
+                            "可以直接說：10分鐘、半小時、1小時、1天\n" +
+                            "或輸入數字：\n" +
+                            "1. 1分  2. 3分  3. 5分  4. 10分\n" +
+                            "5. 30分  6. 1小時  7. 1天");
+                    continue;
                 }
 
                 var p = pendingReminderService.remove(userId);
-                int choice = Integer.parseInt(userText);
-
-                java.time.Duration advance = switch (choice) {
-                    case 1 -> java.time.Duration.ofMinutes(1);
-                    case 2 -> java.time.Duration.ofMinutes(3);
-                    case 3 -> java.time.Duration.ofMinutes(5);
-                    case 4 -> java.time.Duration.ofMinutes(10);
-                    case 5 -> java.time.Duration.ofMinutes(30);
-                    case 6 -> java.time.Duration.ofHours(1);
-                    case 7 -> java.time.Duration.ofDays(1);
-                    default -> java.time.Duration.ofMinutes(10);
-                };
-
                 reminderService.add(userId, p.eventTime, advance, p.text);
 
                 var remindTime = p.eventTime.minus(advance);
@@ -624,7 +633,7 @@ public class LineBotController {
                         " " + String.format("%02d:%02d", remindTime.getHour(), remindTime.getMinute());
 
                 lineReplyService.replyText(replyToken, msg);
-                return "OK";
+                continue;
             }
 
             if (userText.equalsIgnoreCase("remind list")) {
@@ -725,55 +734,11 @@ public class LineBotController {
                 continue;
             }
 
-            // --- Natural-language fallback (before AI) ---
-            // Examples:
-            // 1) 我剛剛買菜花了50
-            // 2) 提醒我 1/19 15:20喝水
-            if (tryParseNaturalReminder(userText, userId, replyToken)) {
-                return "OK";
-            }
-            if (tryParseNaturalExpense(userText, userId, replyToken)) {
-                return "OK";
-            }
+            // --- Regex fallbacks (only reached when AI is disabled or returned UNKNOWN) ---
+            if (tryParseNaturalReminder(userText, userId, replyToken)) continue;
+            if (tryParseNaturalExpense(userText, userId, replyToken)) continue;
 
-            // --- AI parser (Structured Output) ---
-            if (!aiParser.isEnabled()) {
-                String reason = aiParser.getLastError();
-                if (reason == null || reason.isBlank()) {
-                    reason = "OpenAI 未啟用（可能缺少 OPENAI_API_KEY）";
-                }
-                lineReplyService.replyText(replyToken,
-                        "⚠️ 目前無法使用自然語言解析（AI Parser 未啟用/不可用）\n" +
-                                reason +
-                                "\n\n你可以改用 functions 內的指令格式。"
-                );
-                return "OK";
-            }
-
-            Command cmd = aiParser.parse(userText);
-            if (cmd.intent != Intent.UNKNOWN) {
-                if (cmd.missing != null && !cmd.missing.isEmpty()) {
-                    pendingCommandService.put(userId, cmd);
-                    lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", cmd.missing));
-                    return "OK";
-                }
-                executeAiCommand(cmd, userId, replyToken);
-                return "OK";
-            }
-
-            lineReplyService.replyText(replyToken,
-                    "我看不懂這個指令 🤔\n\n可用指令：\n" +
-                            "+ 待辦事項\n" +
-                            "List\n" +
-                            "Done 事項編號\n" +
-                            "$金額 備註（預設支出，可用 +100 表示收入）\n" +
-                            "sum\n" +
-                            "$list\n" +
-                            "today\n" +
-                            "month\n" +
-                            "Remind 日期 時間 事項\n" +
-                            "Remind list\n" +
-                            "functions");
+            lineReplyService.replyText(replyToken, "我看不太懂 🤔\n輸入 functions 看可用指令");
         }
 
         return "OK";
@@ -792,6 +757,51 @@ public class LineBotController {
                 "• remind 日期 時間 事項\n" +
                 "• remind list\n" +
                 "• functions";
+    }
+
+    /**
+     * Parse natural-language advance-notice input.
+     * Accepts the 1-7 menu shortcuts AND free-form expressions like:
+     *   10分鐘, 半小時, 1小時, 1天, 10 min, half an hour, 1 hour, 1 day
+     */
+    private java.time.Duration parseAdvanceNotice(String text) {
+        if (text == null) return null;
+        String t = text.trim();
+
+        // Menu shortcuts 1–7
+        if (t.matches("^[1-7]$")) {
+            return switch (Integer.parseInt(t)) {
+                case 1 -> java.time.Duration.ofMinutes(1);
+                case 2 -> java.time.Duration.ofMinutes(3);
+                case 3 -> java.time.Duration.ofMinutes(5);
+                case 4 -> java.time.Duration.ofMinutes(10);
+                case 5 -> java.time.Duration.ofMinutes(30);
+                case 6 -> java.time.Duration.ofHours(1);
+                case 7 -> java.time.Duration.ofDays(1);
+                default -> null;
+            };
+        }
+
+        String lower = t.toLowerCase();
+
+        // Half-hour special case
+        if (lower.matches(".*(半小時|半.*hour|half.*hour|half.*hr).*")) {
+            return java.time.Duration.ofMinutes(30);
+        }
+
+        // N minutes: 10分鐘, 10分, 10 min, 10 minutes
+        Matcher mMin = Pattern.compile("(\\d+)\\s*(?:分鐘|分|mins?|minutes?)").matcher(lower);
+        if (mMin.find()) return java.time.Duration.ofMinutes(Long.parseLong(mMin.group(1)));
+
+        // N hours: 1小時, 1時, 1 hour, 1 hr
+        Matcher mHour = Pattern.compile("(\\d+)\\s*(?:小時|時|hours?|hrs?)").matcher(lower);
+        if (mHour.find()) return java.time.Duration.ofHours(Long.parseLong(mHour.group(1)));
+
+        // N days: 1天, 1 day
+        Matcher mDay = Pattern.compile("(\\d+)\\s*(?:天|days?)").matcher(lower);
+        if (mDay.find()) return java.time.Duration.ofDays(Long.parseLong(mDay.group(1)));
+
+        return null;
     }
 
     /**
