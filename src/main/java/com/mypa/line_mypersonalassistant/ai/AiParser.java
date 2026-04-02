@@ -188,7 +188,11 @@ public class AiParser {
                 "   '目前總共花了多少' / 'total spending' / '花費總計' => EXPENSE_SUM. " +
                 "   'I spent 50 dollars on lunch' / '午餐50塊' (no verb) => ADD_EXPENSE, amount=-50, item=lunch. " +
                 "11) For REMIND_LIST: '我有什麼提醒' / 'what reminders do I have' / 'list my reminders' => REMIND_LIST. " +
-                "    For REMIND_DELETE: 'delete reminder 2' / '刪掉第2個提醒' => REMIND_DELETE, index=2.";
+                "    For REMIND_DELETE: 'delete reminder 2' / '刪掉第2個提醒' => REMIND_DELETE, index=2. " +
+                "12) Always fill the `reply` field with a short, friendly, natural response in the same language the user used. " +
+                "    If missing slots: `reply` should be a natural follow-up question (e.g. '你想提醒自己什麼事情呢？' or 'What would you like to be reminded about?'). " +
+                "    If all slots are present and intent is clear: `reply` should be a brief confirmation (e.g. '好的，已幫你設定提醒！' or 'Got it!'). " +
+                "    Never say '我需要更多資訊' or list slot names in `reply`.";
 
         ObjectNode msg1 = mapper.createObjectNode();
         msg1.put("role", "system");
@@ -260,9 +264,13 @@ public class AiParser {
         confidence.set("type", mapper.createArrayNode().add("number").add("null"));
         props.set("confidence", confidence);
 
+        ObjectNode reply = mapper.createObjectNode();
+        reply.put("type", "string");
+        props.set("reply", reply);
+
         jsonSchema.set("properties", props);
         jsonSchema.set("required", mapper.createArrayNode()
-                .add("intent").add("slots").add("missing").add("confidence"));
+                .add("intent").add("slots").add("missing").add("confidence").add("reply"));
 
         ObjectNode format = mapper.createObjectNode();
         format.put("type", "json_schema");

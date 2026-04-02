@@ -171,14 +171,9 @@ public class LineBotController {
                 pendingReminderService.put(userId, p);
 
                 lineReplyService.replyText(replyToken,
-                        "請問要提前多久提醒(回覆2代表10 min)：\n" +
-                                "1. 1 min\n" +
-                                "2. 3 min\n" +
-                                "3. 5 min\n" +
-                                "4. 10 min\n" +
-                                "5. 30 min\n" +
-                                "6. 1 hour\n" +
-                                "7. 1 day"
+                        "好的！你想提前多久收到提醒呢？\n" +
+                                "可以直接說：10分鐘前、半小時前、1小時前、1天前\n" +
+                                "或輸入數字：1(1分) 2(3分) 3(5分) 4(10分) 5(30分) 6(1小時) 7(1天)"
                 );
             }
 
@@ -381,7 +376,10 @@ public class LineBotController {
 
                 if (!filled.missing.isEmpty()) {
                     pendingCommandService.put(userId, filled);
-                    lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", filled.missing));
+                    String followUp = (filled.reply != null && !filled.reply.isBlank())
+                            ? filled.reply
+                            : "我需要更多資訊：" + String.join(", ", filled.missing);
+                    lineReplyService.replyText(replyToken, followUp);
                     continue;
                 } else {
                     pendingCommandService.clear(userId);
@@ -483,7 +481,10 @@ public class LineBotController {
                 if (aiCmd.intent != Intent.UNKNOWN) {
                     if (aiCmd.missing != null && !aiCmd.missing.isEmpty()) {
                         pendingCommandService.put(userId, aiCmd);
-                        lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", aiCmd.missing));
+                        String question = (aiCmd.reply != null && !aiCmd.reply.isBlank())
+                                ? aiCmd.reply
+                                : "我需要更多資訊：" + String.join(", ", aiCmd.missing);
+                        lineReplyService.replyText(replyToken, question);
                     } else {
                         executeAiCommand(aiCmd, userId, replyToken);
                     }
@@ -599,14 +600,9 @@ public class LineBotController {
                 pendingReminderService.put(userId, p);
 
                 lineReplyService.replyText(replyToken,
-                        "請問要提前多久提醒(回覆2代表10 min)：\n" +
-                                "1. 1 min\n" +
-                                "2. 3 min\n" +
-                                "3. 5 min\n" +
-                                "4. 10 min\n" +
-                                "5. 30 min\n" +
-                                "6. 1 hour\n" +
-                                "7. 1 day"
+                        "好的！你想提前多久收到提醒呢？\n" +
+                                "可以直接說：10分鐘前、半小時前、1小時前、1天前\n" +
+                                "或輸入數字：1(1分) 2(3分) 3(5分) 4(10分) 5(30分) 6(1小時) 7(1天)"
                 );
                 return "OK";
             }

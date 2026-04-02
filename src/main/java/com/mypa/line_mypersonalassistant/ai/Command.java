@@ -19,6 +19,7 @@ public class Command {
     public Intent intent = Intent.UNKNOWN;
     public Map<String, Object> slots = new HashMap<>();
     public List<String> missing = new ArrayList<>();
+    public String reply; // natural-language response to show the user
     public Double confidence; // 0~1, optional
     public List<Intent> candidates; // optional
 
