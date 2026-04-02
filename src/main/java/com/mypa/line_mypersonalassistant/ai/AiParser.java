@@ -229,17 +229,26 @@ public class AiParser {
                 .add(Intent.UNKNOWN.name()));
         props.set("intent", intent);
 
+        // Strict mode requires every property listed in `required`, with nullable types for optional fields.
         ObjectNode slots = mapper.createObjectNode();
         slots.put("type", "object");
         slots.put("additionalProperties", false);
         ObjectNode slotProps = mapper.createObjectNode();
-        slotProps.set("text", mapper.createObjectNode().put("type", "string"));
-        slotProps.set("index", mapper.createObjectNode().put("type", "integer"));
-        slotProps.set("amount", mapper.createObjectNode().put("type", "number"));
-        slotProps.set("item", mapper.createObjectNode().put("type", "string"));
-        slotProps.set("date", mapper.createObjectNode().put("type", "string").put("description", "yyyy-MM-dd"));
-        slotProps.set("time", mapper.createObjectNode().put("type", "string").put("description", "HH:mm"));
+        slotProps.set("text",   mapper.createObjectNode().set("type", mapper.createArrayNode().add("string").add("null")));
+        slotProps.set("index",  mapper.createObjectNode().set("type", mapper.createArrayNode().add("integer").add("null")));
+        slotProps.set("amount", mapper.createObjectNode().set("type", mapper.createArrayNode().add("number").add("null")));
+        slotProps.set("item",   mapper.createObjectNode().set("type", mapper.createArrayNode().add("string").add("null")));
+        ObjectNode dateNode = mapper.createObjectNode();
+        dateNode.set("type", mapper.createArrayNode().add("string").add("null"));
+        dateNode.put("description", "yyyy-MM-dd");
+        slotProps.set("date", dateNode);
+        ObjectNode timeNode = mapper.createObjectNode();
+        timeNode.set("type", mapper.createArrayNode().add("string").add("null"));
+        timeNode.put("description", "HH:mm");
+        slotProps.set("time", timeNode);
         slots.set("properties", slotProps);
+        slots.set("required", mapper.createArrayNode()
+                .add("text").add("index").add("amount").add("item").add("date").add("time"));
         props.set("slots", slots);
 
         ObjectNode missing = mapper.createObjectNode();
@@ -248,13 +257,12 @@ public class AiParser {
         props.set("missing", missing);
 
         ObjectNode confidence = mapper.createObjectNode();
-        confidence.put("type", "number");
-        confidence.put("minimum", 0);
-        confidence.put("maximum", 1);
+        confidence.set("type", mapper.createArrayNode().add("number").add("null"));
         props.set("confidence", confidence);
 
         jsonSchema.set("properties", props);
-        jsonSchema.set("required", mapper.createArrayNode().add("intent").add("slots").add("missing"));
+        jsonSchema.set("required", mapper.createArrayNode()
+                .add("intent").add("slots").add("missing").add("confidence"));
 
         ObjectNode format = mapper.createObjectNode();
         format.put("type", "json_schema");
