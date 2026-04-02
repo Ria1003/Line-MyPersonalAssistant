@@ -37,25 +37,6 @@
 			<artifactId>spring-boot-starter-web</artifactId>
 		</dependency>
 
-		<!-- LINE Bot Spring Boot (WebMVC binding) -->
-		<dependency>
-			<groupId>com.linecorp.bot</groupId>
-			<artifactId>line-bot-spring-boot-webmvc</artifactId>
-			<version>${line.bot.sdk.version}</version>
-		</dependency>
-
-		<!-- LINE Messaging API Client（用來 replyMessage/pushMessage） -->
-		<dependency>
-			<groupId>com.linecorp.bot</groupId>
-			<artifactId>line-bot-spring-boot-client</artifactId>
-			<version>${line.bot.sdk.version}</version>
-		</dependency>
-
-		<dependency>
-			<groupId>com.linecorp.bot</groupId>
-			<artifactId>line-bot-messaging-api-client</artifactId>
-			<version>9.13.0</version>
-			</dependency>
 
 			<dependency>
 			<groupId>com.fasterxml.jackson.core</groupId>

@@ -1,5 +1,6 @@
 package com.mypa.line_mypersonalassistant;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -10,7 +11,16 @@ import java.util.*;
 public class LinePushService {
 
     private final RestTemplate restTemplate = new RestTemplate();
-    private final String channelAccessToken = "cEUUqWfKxU8TXro0mAIbJcq5PYy7nN/uRjXG8sf1AIj0kaCvLS/cku+mPcR7vqKktErawOTROAamlfnWEtnCU4beKRe4L0ksl5mJPMruxczjHvpjGY7NcdBw/Wo+vZulO+iGNHcDQhNE6C7nco1a8QdB04t89/1O/w1cDnyilFU=";
+    private final String channelAccessToken;
+
+    public LinePushService(@Value("${line.bot.channel-token:}") String channelAccessToken) {
+        if (channelAccessToken == null || channelAccessToken.isBlank()) {
+            throw new IllegalStateException(
+                    "Missing config: line.bot.channel-token (Railway env: LINE_BOT_CHANNEL_TOKEN)"
+            );
+        }
+        this.channelAccessToken = channelAccessToken;
+    }
 
     public void pushText(String userId, String text) {
         String url = "https://api.line.me/v2/bot/message/push";
