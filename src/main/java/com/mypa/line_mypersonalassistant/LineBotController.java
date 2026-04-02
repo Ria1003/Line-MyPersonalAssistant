@@ -154,7 +154,9 @@ public class LineBotController {
 
                 if (date == null || time == null || text == null) {
                     pendingCommandService.put(userId, cmd);
-                    lineReplyService.replyText(replyToken, "我需要更多資訊：" + String.join(", ", cmd.missing));
+                    String question = (cmd.reply != null && !cmd.reply.isBlank())
+                            ? cmd.reply : "我需要更多資訊：" + String.join(", ", cmd.missing);
+                    lineReplyService.replyText(replyToken, question);
                     return;
                 }
 
@@ -164,17 +166,18 @@ public class LineBotController {
                 int minute = Integer.parseInt(hm[1]);
                 LocalDateTime eventTime = d.atTime(hour, minute);
 
-                PendingReminderService.Pending p = new PendingReminderService.Pending();
-                p.eventTime = eventTime;
-                p.text = text;
-                p.rawDisplay = date + " " + time + " " + text;
-                pendingReminderService.put(userId, p);
+                // Use advance_minutes from AI if provided, default to 10 minutes
+                Integer advMins = cmd.slotInt("advance_minutes");
+                java.time.Duration advance = java.time.Duration.ofMinutes(advMins != null ? advMins : 10);
 
+                reminderService.add(userId, eventTime, advance, text);
+
+                var remindTime = eventTime.minus(advance);
+                String remindStr = remindTime.getMonthValue() + "/" + remindTime.getDayOfMonth()
+                        + " " + String.format("%02d:%02d", remindTime.getHour(), remindTime.getMinute());
                 lineReplyService.replyText(replyToken,
-                        "好的！你想提前多久收到提醒呢？\n" +
-                                "可以直接說：10分鐘前、半小時前、1小時前、1天前\n" +
-                                "或輸入數字：1(1分) 2(3分) 3(5分) 4(10分) 5(30分) 6(1小時) 7(1天)"
-                );
+                        "✅ 已設定提醒\n事件：" + eventTime.format(MDHM_FMT) + " " + text
+                        + "\n提醒時間：" + remindStr);
             }
 
             case REMIND_LIST -> {

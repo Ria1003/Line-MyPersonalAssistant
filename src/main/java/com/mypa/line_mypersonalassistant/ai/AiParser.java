@@ -173,10 +173,13 @@ public class AiParser {
                 "   N 點半 = N:30 (e.g. 早上8點半=08:30, 下午3點半=15:30). " +
                 "   N 點 without prefix: if 1<=N<=6 assume PM (13:00–18:00), else AM. " +
                 "8) Reminder examples: " +
-                "   提醒我 1/19 15:20喝水 => REMIND_CREATE, date=nearest future 01-19, time=15:20, text=喝水. " +
-                "   提醒我 1/24早上8點要po子晴生日文 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=po子晴生日文. " +
-                "   remind me to call mom at 8AM on 1/24 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=call mom. " +
-                "   remind me to po子晴生日文 at 8:00AM on 1/24 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=po子晴生日文. " +
+                "   提醒我 1/19 15:20喝水 => REMIND_CREATE, date=nearest future 01-19, time=15:20, text=喝水, advance_minutes=null. " +
+                "   提醒我 1/24早上8點要po子晴生日文 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=po子晴生日文, advance_minutes=null. " +
+                "   remind me to call mom at 8AM on 1/24 => REMIND_CREATE, date=nearest future 01-24, time=08:00, text=call mom, advance_minutes=null. " +
+                "   提醒我明天早上10點出門買麵包，提前30分鐘 => REMIND_CREATE, advance_minutes=30. " +
+                "   提醒我後天下午3點開會，提前1小時提醒 => REMIND_CREATE, advance_minutes=60. " +
+                "   remind me 1 day before my dentist at 9am 5/1 => REMIND_CREATE, advance_minutes=1440. " +
+                "   Only set advance_minutes when the user explicitly mentions an advance duration. Otherwise leave it null. " +
                 "9) Todo examples: " +
                 "   '幫我加 買牛奶 到待辦' / 'add call dentist to my list' / '記一下要開會' => ADD_TODO. " +
                 "   '我的待辦事項' / '看一下待辦' / 'what are my todos' / 'show my list' => LIST_TODO. " +
@@ -250,9 +253,13 @@ public class AiParser {
         timeNode.set("type", mapper.createArrayNode().add("string").add("null"));
         timeNode.put("description", "HH:mm");
         slotProps.set("time", timeNode);
+        ObjectNode advNode = mapper.createObjectNode();
+        advNode.set("type", mapper.createArrayNode().add("integer").add("null"));
+        advNode.put("description", "advance notice in minutes, e.g. 10 for 10 minutes before");
+        slotProps.set("advance_minutes", advNode);
         slots.set("properties", slotProps);
         slots.set("required", mapper.createArrayNode()
-                .add("text").add("index").add("amount").add("item").add("date").add("time"));
+                .add("text").add("index").add("amount").add("item").add("date").add("time").add("advance_minutes"));
         props.set("slots", slots);
 
         ObjectNode missing = mapper.createObjectNode();
